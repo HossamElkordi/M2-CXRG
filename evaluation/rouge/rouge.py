@@ -52,13 +52,13 @@ class Rouge():
         :param refs: list of str : COCO reference sentences for the particular image to be evaluated
         :returns score: int (ROUGE-L score for the candidate evaluated against references)
         """
-        assert (len(candidate) == 1)
+        assert (len(candidate) >= 1)
         assert (len(refs) > 0)
         prec = []
         rec = []
 
         # split into tokens
-        token_c = candidate[0].split(" ")
+        token_c = ''.join(candidate).split(" ")
 
         for reference in refs:
             # split into tokens
@@ -93,11 +93,11 @@ class Rouge():
             hypo = res[id]
             ref = gts[id]
 
-            score.append(self.calc_score(hypo, ref))
+            score.append(self.calc_score(''.join(hypo), [''.join(ref)]))
 
             # Sanity check.
             assert (type(hypo) is list)
-            assert (len(hypo) == 1)
+            assert (len(hypo) >= 1)
             assert (type(ref) is list)
             assert (len(ref) > 0)
 

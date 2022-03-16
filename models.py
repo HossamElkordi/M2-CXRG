@@ -369,7 +369,7 @@ class ClsGen(nn.Module):
                 return cap_gen, img_mlc
         else:
             src_emb = img_emb + lbl_emb
-            cap_gen = self.generator(src_emb)  # (B,L,S)
+            cap_gen = self.generator(src_emb, caption)  # (B,L,S)
             return cap_gen, img_mlc
 
 

@@ -30,11 +30,11 @@ class Bleu:
 
             # Sanity check.
             assert(type(hypo) is list)
-            assert(len(hypo) == 1)
+            assert(len(hypo) >= 1)
             assert(type(ref) is list)
             assert(len(ref) >= 1)
 
-            bleu_scorer += (hypo[0], ref)
+            bleu_scorer += (''.join(hypo), [''.join(ref)])
 
         # score, scores = bleu_scorer.compute_score(option='shortest')
         score, scores = bleu_scorer.compute_score(option='closest', verbose=0)

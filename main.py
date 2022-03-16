@@ -63,20 +63,22 @@ def infer_model(model, dataset, test_data, test_loader, comment):
     gen_outputs = txt_test_outputs[0]
     gen_targets = txt_test_targets[0]
 
+    gen, gts = {}, {}
+
     out_file_ref = open(
         '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Ref.json'.format(args.dataset_name, args.model_name,
-                                                                      args.visual_extractor, comment), 'w')
+                                                                       args.visual_extractor, comment), 'w')
     out_file_hyp = open(
         '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Hyp.json'.format(args.dataset_name, args.model_name,
-                                                                      args.visual_extractor, comment), 'w')
+                                                                       args.visual_extractor, comment), 'w')
     out_file_lbl = open(
         '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Lbl.json'.format(args.dataset_name, args.model_name,
-                                                                      args.visual_extractor, comment), 'w')
+                                                                       args.visual_extractor, comment), 'w')
 
-    for k, v in gen_outputs.items():
+    for i in range(len(gen_outputs)):
         candidate = ''
-        for j in range(len(v)):
-            tok = dataset.vocab.id_to_piece(int(v[j]))
+        for j in range(len(gen_outputs[i])):
+            tok = dataset.vocab.id_to_piece(int(gen_outputs[i, j]))
             if tok == '</s>':
                 break  # Manually stop generating token after </s> is reached
             elif tok == '<s>':
@@ -91,13 +93,13 @@ def infer_model(model, dataset, test_data, test_loader, comment):
                     candidate += tok + ' '
             else:  # letter
                 candidate += tok
-        gen_outputs[k] = candidate
-    json.dump(gen_outputs, out_file_hyp)
+        gen[i] = candidate
+    json.dump(gen, out_file_hyp)
 
-    for k, v in gen_targets.items():
+    for i in range(len(gen_targets)):
         reference = ''
-        for j in range(len(v)):
-            tok = dataset.vocab.id_to_piece(int(v[j]))
+        for j in range(len(gen_targets[i])):
+            tok = dataset.vocab.id_to_piece(int(gen_targets[i, j]))
             if tok == '</s>':
                 break  # Manually stop generating token after </s> is reached
             elif tok == '<s>':
@@ -112,16 +114,16 @@ def infer_model(model, dataset, test_data, test_loader, comment):
                     reference += tok + ' '
             else:  # letter
                 reference += tok
-        gen_targets[k] = reference
-    json.dump(gen_targets, out_file_ref)
+        gts[i] = reference
+    json.dump(gts, out_file_ref)
 
     labels = {}
     for i in tqdm(range(len(test_data))):
-        labels[i] = test_data[i][1]  # caption, label
+        labels[i] = test_data[i][1][1].tolist()  # caption, label
     json.dump(labels, out_file_lbl)
 
-    gen_targets = evaluation.PTBTokenizer.tokenize(gen_targets)
-    gen_outputs = evaluation.PTBTokenizer.tokenize(gen_outputs)
+    gen_targets = evaluation.PTBTokenizer.tokenize(gts)
+    gen_outputs = evaluation.PTBTokenizer.tokenize(gen)
 
     scores, _ = evaluation.compute_scores(gen_targets, gen_outputs)
     print(scores)
@@ -129,8 +131,8 @@ def infer_model(model, dataset, test_data, test_loader, comment):
 
 def infer(data_loader, model, device='cpu', threshold=None):
     model.eval()
-    outputs = {}
-    targets = {}
+    outputs = []
+    targets = []
 
     with torch.no_grad():
         prog_bar = tqdm(data_loader)
@@ -144,8 +146,8 @@ def infer(data_loader, model, device='cpu', threshold=None):
             else:
                 output = model(source[0])
 
-            outputs[i] = data_to_device(output)
-            targets[i] = data_to_device(targets)
+            outputs.append(data_to_device(output[0]))
+            targets.append(data_to_device(target))
 
         outputs = data_concatenate(outputs)
         targets = data_concatenate(targets)
@@ -200,11 +202,11 @@ def main(args):
                                num_heads=args.num_heads,
                                dropout=args.dropout)
 
-        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.embed_size,
-                                         d_model=args.embed_size, attention_module=ScaledDotProductAttentionMemory,
+        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.num_embed,
+                                         d_model=args.num_embed, attention_module=ScaledDotProductAttentionMemory,
                                          attention_module_kwargs={'m': 40})
         decoder = MeshedDecoder(len(dataset.vocab), args.max_seq_length, 3, dataset.vocab.pad_id(),
-                                d_model=args.embed_size)
+                                d_model=args.num_embed)
         gen_model = Transformer(args, dataset.vocab.bos_id(), dataset.vocab.eos_id(), encoder, decoder)
 
         model = ClsGen(cls_model, gen_model, args.decease_related_topics, args.num_embed)
@@ -219,11 +221,11 @@ def main(args):
                                cnn=visual_extractor, tnn=text_feat_extractor, fc_features=fc_features,
                                embed_dim=args.num_embed, num_heads=args.num_heads, dropout=args.dropout)
 
-        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.embed_size,
-                                         d_model=args.embed_size, attention_module=ScaledDotProductAttentionMemory,
+        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.num_embed,
+                                         d_model=args.num_embed, attention_module=ScaledDotProductAttentionMemory,
                                          attention_module_kwargs={'m': 40})
         decoder = MeshedDecoder(len(dataset.vocab), args.max_seq_length, 3, dataset.vocab.pad_id(),
-                                d_model=args.embed_size)
+                                d_model=args.num_embed)
         gen_model = Transformer(args, dataset.vocab.bos_id(), dataset.vocab.eos_id(), encoder, decoder)
 
         cls_gen_model = ClsGen(cls_model, gen_model, args.decease_related_topics, args.num_embed)
@@ -327,7 +329,7 @@ def parse_agruments():
     parser.add_argument('--max_seq_length', type=int, default=60, help='the maximum sequence length of the reports.')
     parser.add_argument('--num_workers', type=int, default=2, help='the number of workers for dataloader.')
     parser.add_argument('--batch_size', type=int, default=16, help='the number of samples for a batch')
-    parser.add_argument('--epoch_milestone', type=int, default=25,
+    parser.add_argument('--patience', type=int, default=25,
                         help='Reduce LR by 10 after reaching milestone epochs')
 
     # Model settings (for visual extractor)

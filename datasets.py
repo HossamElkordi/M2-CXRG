@@ -559,14 +559,14 @@ class TextDataset(data.Dataset):
         return len(self.lines)
 
     def __getitem__(self, idx):
-        encoded_text = [self.vocab.bos_id()] + self.vocab.encode(self.lines[idx].strip()) + [self.vocab.eos_id()]
+        encoded_text = [self.vocab.bos_id()] + self.vocab.encode(self.lines[str(idx)].strip()) + [self.vocab.eos_id()]
         text = np.ones(self.max_len, dtype=np.int64) * self.vocab.pad_id()
         text[:min(len(encoded_text), self.max_len)] = encoded_text[:min(len(encoded_text), self.max_len)]
         
         sources = []
         for i in range(len(self.sources)):
             if self.sources[i] == 'label':
-                sources.append(self.labels[idx])
+                sources.append(self.labels[str(idx)])
             if self.sources[i] == 'caption':
                 sources.append(text)
             if self.sources[i] == 'caption_length':
@@ -575,7 +575,7 @@ class TextDataset(data.Dataset):
         targets = []
         for i in range(len(self.targets)):
             if self.targets[i] == 'label':
-                targets.append(self.labels[idx])
+                targets.append(self.labels[str(idx)])
             if self.targets[i] == 'caption':
                 targets.append(text)
             if self.targets[i] == 'caption_length':
@@ -586,5 +586,7 @@ class TextDataset(data.Dataset):
     def __input_data(self):
         data_file = open(self.text_file, 'r')
         labl_file = open(self.text_file, 'r')
-        self.lines = json.load(data_file)
-        self.labels = json.load(labl_file)
+        with open(self.text_file) as data_file:
+            self.lines = json.load(data_file)
+        with open(self.label_file) as labl_file:
+            self.labels = json.load(labl_file)

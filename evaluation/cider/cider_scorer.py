@@ -57,9 +57,9 @@ class CiderScorer(object):
         self.ref_len = None
 
         for k in refs.keys():
-            self.crefs.append(cook_refs(refs[k]))
+            self.crefs.append(cook_refs([''.join(refs[k])]))
             if test is not None:
-                self.ctest.append(cook_test(test[k][0]))  ## N.B.: -1
+                self.ctest.append(cook_test(''.join(test[k])))  ## N.B.: -1
             else:
                 self.ctest.append(None)  # lens of crefs and ctest have to match
 
