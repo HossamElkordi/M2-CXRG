@@ -103,9 +103,9 @@ def parse_agruments():
 
 
 def main(args):
-    TEXT_FILE = '/content/drive/MyDrive/outputs/x_{}_ClsGenInt_DenseNet121_MaxView2_NumLabel114_History_Hyp.txt'.format(
+    TEXT_FILE = '/content/drive/MyDrive/outputs/x_{}_ClsGenInt_DenseNet121_MaxView2_NumLabel114_History_Hyp.json'.format(
         args.dataset_name)
-    LABEL_FILE = '/content/drive/MyDrive/outputs/x_{}_ClsGenInt_DenseNet121_MaxView2_NumLabel114_History_Lbl.txt'.format(
+    LABEL_FILE = '/content/drive/MyDrive/outputs/x_{}_ClsGenInt_DenseNet121_MaxView2_NumLabel114_History_Lbl.json'.format(
         args.dataset_name)
 
     vocab_size, posit_size, comment, dataset = None, None, None, None

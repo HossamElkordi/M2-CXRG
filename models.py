@@ -362,14 +362,14 @@ class ClsGen(nn.Module):
             src_emb = img_emb + lbl_emb
             # pad_mask = (caption == pad_id)
             # fc_feats, att_feats, seq
-            cap_gen, cap_emb = self.generator(att_feats=src_emb, seq=caption)  # (B,L,S), (B,L,E)
+            cap_gen, cap_emb = self.generator(src_emb, caption)  # (B,L,S), (B,L,E)
             if get_emb:
                 return cap_gen, img_mlc, cap_emb
             else:
                 return cap_gen, img_mlc
         else:
             src_emb = img_emb + lbl_emb
-            cap_gen = self.generator(att_feats=src_emb, seq=caption)  # (B,L,S)
+            cap_gen = self.generator(src_emb)  # (B,L,S)
             return cap_gen, img_mlc
 
 

@@ -1,6 +1,7 @@
 # --- Base packages ---
 import argparse
 import os
+import json
 
 # --- PyTorch packages ---
 import torch
@@ -16,8 +17,8 @@ from utils import save, load, train, test, data_to_device, data_concatenate
 from datasets import MIMIC, NLMCXR
 from losses import CELossTotalEval, CELossTotal
 from models import CNN, MVCNN, TNN, Classifier, ClsGen, ClsGenInt
-from models.transformer import Transformer, MemoryAugmentedEncoder, MeshedDecoder, ScaledDotProductAttentionMemory
-
+from modules.transformer import Transformer, MemoryAugmentedEncoder, MeshedDecoder, ScaledDotProductAttentionMemory
+import evaluation
 
 # --- Text Trainer ---
 from train_text import train_interpreter
@@ -39,7 +40,7 @@ def train_model(model, train_loader, val_loader, test_loader, optimizer, criteri
         val_loss = test(val_loader, model, criterion, device='cuda', kw_src=args.kwargs_sources, return_results=False)
         test_loss = test(test_loader, model, criterion, device='cuda', kw_src=args.kwargs_sources, return_results=False)
 
-        scheduler.step()
+        scheduler.step(val_loss)
 
         if best_loss > val_loss:
             best_loss = val_loss
@@ -63,19 +64,19 @@ def infer_model(model, dataset, test_data, test_loader, comment):
     gen_targets = txt_test_targets[0]
 
     out_file_ref = open(
-        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Ref.txt'.format(args.dataset_name, args.model_name,
+        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Ref.json'.format(args.dataset_name, args.model_name,
                                                                       args.visual_extractor, comment), 'w')
     out_file_hyp = open(
-        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Hyp.txt'.format(args.dataset_name, args.model_name,
+        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Hyp.json'.format(args.dataset_name, args.model_name,
                                                                       args.visual_extractor, comment), 'w')
     out_file_lbl = open(
-        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Lbl.txt'.format(args.dataset_name, args.model_name,
+        '/content/drive/MyDrive/outputs/x_{}_{}_{}_{}_Lbl.json'.format(args.dataset_name, args.model_name,
                                                                       args.visual_extractor, comment), 'w')
 
-    for i in range(len(gen_outputs)):
+    for k, v in gen_outputs.items():
         candidate = ''
-        for j in range(len(gen_outputs[i])):
-            tok = dataset.vocab.id_to_piece(int(gen_outputs[i, j]))
+        for j in range(len(v)):
+            tok = dataset.vocab.id_to_piece(int(v[j]))
             if tok == '</s>':
                 break  # Manually stop generating token after </s> is reached
             elif tok == '<s>':
@@ -90,13 +91,15 @@ def infer_model(model, dataset, test_data, test_loader, comment):
                     candidate += tok + ' '
             else:  # letter
                 candidate += tok
-        out_file_hyp.write(candidate + '\n')
+        gen_outputs[k] = candidate
+    json.dump(gen_outputs, out_file_hyp)
 
+    for k, v in gen_targets.items():
         reference = ''
-        for j in range(len(gen_targets[i])):
-            tok = dataset.vocab.id_to_piece(int(gen_targets[i, j]))
+        for j in range(len(v)):
+            tok = dataset.vocab.id_to_piece(int(v[j]))
             if tok == '</s>':
-                break
+                break  # Manually stop generating token after </s> is reached
             elif tok == '<s>':
                 continue
             elif tok == '▁':  # space
@@ -109,17 +112,25 @@ def infer_model(model, dataset, test_data, test_loader, comment):
                     reference += tok + ' '
             else:  # letter
                 reference += tok
-        out_file_ref.write(reference + '\n')
+        gen_targets[k] = reference
+    json.dump(gen_targets, out_file_ref)
 
+    labels = {}
     for i in tqdm(range(len(test_data))):
-        target = test_data[i][1]  # caption, label
-        out_file_lbl.write(' '.join(map(str, target[1])) + '\n')
+        labels[i] = test_data[i][1]  # caption, label
+    json.dump(labels, out_file_lbl)
+
+    gen_targets = evaluation.PTBTokenizer.tokenize(gen_targets)
+    gen_outputs = evaluation.PTBTokenizer.tokenize(gen_outputs)
+
+    scores, _ = evaluation.compute_scores(gen_targets, gen_outputs)
+    print(scores)
 
 
 def infer(data_loader, model, device='cpu', threshold=None):
     model.eval()
-    outputs = []
-    targets = []
+    outputs = {}
+    targets = {}
 
     with torch.no_grad():
         prog_bar = tqdm(data_loader)
@@ -130,15 +141,11 @@ def infer(data_loader, model, device='cpu', threshold=None):
             # Use single input if there is no clinical history
             if threshold is not None:
                 output = model(image=source[0], history=source[3], threshold=threshold)
-                # output = model(image=source[0], threshold=threshold)
-                # output = model(image=source[0], history=source[3], label=source[2])
-                # output = model(image=source[0], label=source[2])
             else:
-                # output = model(source[0], source[1])
                 output = model(source[0])
 
-            outputs.append(data_to_device(output))
-            targets.append(data_to_device(target))
+            outputs[i] = data_to_device(output)
+            targets[i] = data_to_device(targets)
 
         outputs = data_concatenate(outputs)
         targets = data_concatenate(targets)
@@ -192,11 +199,13 @@ def main(args):
                                tnn=text_feat_extractor, fc_features=fc_features, embed_dim=args.num_embed,
                                num_heads=args.num_heads,
                                dropout=args.dropout)
-        # gen_model = BaseCMN(args, dataset.vocab)
-        encoder = MemoryAugmentedEncoder(3, 0, attention_module=ScaledDotProductAttentionMemory,
+
+        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.embed_size,
+                                         d_model=args.embed_size, attention_module=ScaledDotProductAttentionMemory,
                                          attention_module_kwargs={'m': 40})
-        decoder = MeshedDecoder(len(dataset.vocab), 54, 3, dataset.vocab.stoi['<pad>'])
-        gen_model = Transformer(dataset.vocab.stoi['<bos>'], encoder, decoder)
+        decoder = MeshedDecoder(len(dataset.vocab), args.max_seq_length, 3, dataset.vocab.pad_id(),
+                                d_model=args.embed_size)
+        gen_model = Transformer(args, dataset.vocab.bos_id(), dataset.vocab.eos_id(), encoder, decoder)
 
         model = ClsGen(cls_model, gen_model, args.decease_related_topics, args.num_embed)
         criterion = CELossTotal(ignore_index=3)
@@ -209,11 +218,13 @@ def main(args):
         cls_model = Classifier(num_topics=args.decease_related_topics, num_states=args.num_classes,
                                cnn=visual_extractor, tnn=text_feat_extractor, fc_features=fc_features,
                                embed_dim=args.num_embed, num_heads=args.num_heads, dropout=args.dropout)
-        # gen_model = BaseCMN(args, dataset.vocab)
-        encoder = MemoryAugmentedEncoder(3, 0, attention_module=ScaledDotProductAttentionMemory,
+
+        encoder = MemoryAugmentedEncoder(3, padding_idx=dataset.vocab.pad_id(), d_in=args.embed_size,
+                                         d_model=args.embed_size, attention_module=ScaledDotProductAttentionMemory,
                                          attention_module_kwargs={'m': 40})
-        decoder = MeshedDecoder(len(dataset.vocab), 54, 3, dataset.vocab.pad_id())
-        gen_model = Transformer(dataset.vocab.bos_id(), encoder, decoder)
+        decoder = MeshedDecoder(len(dataset.vocab), args.max_seq_length, 3, dataset.vocab.pad_id(),
+                                d_model=args.embed_size)
+        gen_model = Transformer(args, dataset.vocab.bos_id(), dataset.vocab.eos_id(), encoder, decoder)
 
         cls_gen_model = ClsGen(cls_model, gen_model, args.decease_related_topics, args.num_embed)
         cls_gen_model = nn.DataParallel(cls_gen_model).cuda()
@@ -263,7 +274,7 @@ def main(args):
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
                             lr=args.lr_nlm if args.dataset_name == 'NLMCXR' else args.lr_mimic,
                             weight_decay=args.weight_decay)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[args.epoch_milestone])
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience)
 
     print('Total Parameters:', sum(p.numel() for p in model.parameters()))
     last_epoch = -1

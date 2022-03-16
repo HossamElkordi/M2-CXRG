@@ -584,6 +584,7 @@ class TextDataset(data.Dataset):
         return sources if len(sources) > 1 else sources[0], targets if len(targets) > 1 else targets[0]
     
     def __input_data(self):
-        data_file = open(self.text_file, 'r') 
-        self.lines = data_file.readlines()
-        self.labels = np.loadtxt(self.label_file, dtype='float')
+        data_file = open(self.text_file, 'r')
+        labl_file = open(self.text_file, 'r')
+        self.lines = json.load(data_file)
+        self.labels = json.load(labl_file)
