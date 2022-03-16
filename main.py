@@ -274,7 +274,7 @@ def main(args):
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
                             lr=args.lr_nlm if args.dataset_name == 'NLMCXR' else args.lr_mimic,
                             weight_decay=args.weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, verbose=True)
 
     print('Total Parameters:', sum(p.numel() for p in model.parameters()))
     last_epoch = -1
