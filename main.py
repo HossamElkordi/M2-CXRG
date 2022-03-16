@@ -13,7 +13,7 @@ import torch.utils.data as data
 from tqdm import tqdm
 
 # --- Project Packages ---
-from utils import save, load, train, test, data_to_device, data_concatenate
+from utility import save, load, train, test, data_to_device, data_concatenate
 from datasets import MIMIC, NLMCXR
 from losses import CELossTotalEval, CELossTotal
 from models import CNN, MVCNN, TNN, Classifier, ClsGen, ClsGenInt

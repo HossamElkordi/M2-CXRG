@@ -16,7 +16,7 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
 # --- Project Packages ---
-from utils import save, load, train, test
+from utility import save, load, train, test
 from datasets import NLMCXR, MIMIC
 from models import Classifier, TNN
 from baselines.transformer.models import LSTM_Attn
